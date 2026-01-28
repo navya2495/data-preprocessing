@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SQL Preprocessing & Data Cleaning Assistant</title>
+  <meta name="description" content="A Streamlit + LLM powered SQL Server data cleaning assistant for preprocessing, EDA, joins, and safe transformations." />
+ 
+
+
+  <style>
+    :root{
+      --bg1:#0b1020;
+      --bg2:#101a38;
+      --card: rgba(255,255,255,0.06);
+      --card2: rgba(255,255,255,0.09);
+      --text:#eaf0ff;
+      --muted: rgba(234,240,255,0.72);
+      --line: rgba(255,255,255,0.12);
+      --accent:#7c5cff;
+      --accent2:#35d1ff;
+      --ok:#4ade80;
+      --warn:#fbbf24;
+      --bad:#fb7185;
+      --shadow: 0 18px 60px rgba(0,0,0,0.35);
+      --radius: 18px;
+    }
+
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+      color:var(--text);
+      background:
+        radial-gradient(1100px 700px at 20% -10%, rgba(124,92,255,0.35), transparent 60%),
+        radial-gradient(900px 600px at 90% 10%, rgba(53,209,255,0.22), transparent 55%),
+        linear-gradient(180deg, var(--bg1), var(--bg2));
+      overflow-x:hidden;
+    }
+
+    a{color:inherit; text-decoration:none}
+    .container{max-width:1180px; margin:0 auto; padding:0 20px;}
+
+    /* Nav */
+    .nav{
+      position:sticky; top:0; z-index:50;
+      backdrop-filter: blur(10px);
+      background: rgba(11,16,32,0.55);
+      border-bottom: 1px solid var(--line);
+    }
+    .nav-inner{
+      display:flex; align-items:center; justify-content:space-between;
+      padding:14px 0;
+      gap:12px;
+    }
+    .brand{
+      display:flex; align-items:center; gap:12px;
+      font-weight:700; letter-spacing:0.2px;
+    }
+    .logo{
+      width:38px; height:38px; border-radius:12px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      box-shadow: 0 10px 30px rgba(124,92,255,0.25);
+      position:relative;
+    }
+    .logo:after{
+      content:"";
+      position:absolute; inset:8px;
+      border-radius:10px;
+      background: rgba(0,0,0,0.25);
+      border:1px solid rgba(255,255,255,0.15);
+    }
+    .nav-links{
+      display:flex; gap:14px; flex-wrap:wrap;
+      color:var(--muted); font-weight:600; font-size:14px;
+    }
+    .nav-links a{padding:8px 10px; border-radius:10px;}
+    .nav-links a:hover{background: rgba(255,255,255,0.06); color:var(--text);}
+    .btn{
+      display:inline-flex; align-items:center; justify-content:center;
+      padding:10px 14px; border-radius:12px;
+      border:1px solid rgba(255,255,255,0.16);
+      background: rgba(255,255,255,0.06);
+      color:var(--text);
+      font-weight:700;
+      gap:10px;
+      cursor:pointer;
+      transition: transform .12s ease, background .12s ease, border-color .12s ease;
+    }
+    .btn:hover{transform: translateY(-1px); background: rgba(255,255,255,0.09); border-color: rgba(255,255,255,0.22);}
+    .btn.primary{
+      background: linear-gradient(135deg, rgba(124,92,255,0.95), rgba(53,209,255,0.85));
+      border-color: rgba(255,255,255,0.18);
+      box-shadow: 0 16px 50px rgba(124,92,255,0.20);
+    }
+    .btn.primary:hover{filter:saturate(1.05);}
+
+    /* Hero */
+    .hero{
+      padding: 56px 0 22px;
+    }
+    .hero-grid{
+      display:grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap:28px;
+      align-items:stretch;
+    }
+    @media (max-width: 940px){
+      .hero-grid{grid-template-columns: 1fr; }
+    }
+    .kicker{
+      display:inline-flex; align-items:center; gap:8px;
+      padding:8px 12px; border-radius:999px;
+      background: rgba(255,255,255,0.06);
+      border:1px solid rgba(255,255,255,0.14);
+      color:var(--muted);
+      font-weight:700; font-size:13px;
+      width:max-content;
+    }
+    .dot{
+      width:9px; height:9px; border-radius:99px;
+      background: var(--ok);
+      box-shadow: 0 0 0 6px rgba(74,222,128,0.12);
+    }
+    h1{
+      margin:16px 0 12px;
+      font-size: clamp(34px, 4vw, 52px);
+      line-height: 1.05;
+      letter-spacing: -0.6px;
+    }
+    .sub{
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.6;
+      max-width: 62ch;
+    }
+    .hero-actions{display:flex; gap:12px; flex-wrap:wrap; margin-top:18px;}
+
+    .pill-row{
+      display:flex; gap:10px; flex-wrap:wrap; margin-top:18px;
+    }
+    
+    .pill{
+      padding:8px 10px; border-radius:999px;
+      background: rgba(255,255,255,0.06);
+      border:1px solid rgba(255,255,255,0.12);
+      color: var(--muted);
+      font-weight:700;
+      font-size: 12px;
+    }
+
+    /* Right card */
+    .panel{
+      background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.05));
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+      position:relative;
+    }
+    .panel::before{
+      content:"";
+      position:absolute; inset:-2px;
+      background:
+        radial-gradient(600px 260px at 20% 0%, rgba(124,92,255,0.22), transparent 55%),
+        radial-gradient(480px 240px at 90% 10%, rgba(53,209,255,0.18), transparent 55%);
+      pointer-events:none;
+    }
+    .panel-inner{
+      position:relative;
+      padding:18px;
+    }
+    .panel h3{
+      margin:0 0 10px;
+      font-size:16px;
+      letter-spacing:-0.2px;
+    }
+    .codebox{
+      background: rgba(0,0,0,0.35);
+      border:1px solid rgba(255,255,255,0.12);
+      border-radius: 14px;
+      padding:14px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 13px;
+      color: rgba(234,240,255,0.85);
+      overflow:auto;
+    }
+    .codebox .dim{color: rgba(234,240,255,0.55)}
+    .statgrid{
+      display:grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap:10px;
+      margin-top:12px;
+    }
+    .stat{
+      background: rgba(255,255,255,0.06);
+      border:1px solid rgba(255,255,255,0.12);
+      border-radius: 14px;
+      padding:12px;
+    }
+    .stat b{display:block; font-size:14px;}
+    .stat span{color: var(--muted); font-size:12px; font-weight:700;}
+
+    /* Sections */
+    section{
+      padding: 34px 0;
+    }
+    .section-title{
+      display:flex; align-items:flex-end; justify-content:space-between; gap:18px;
+      margin-bottom: 14px;
+    }
+    .section-title h2{
+      margin:0;
+      font-size: 24px;
+      letter-spacing:-0.3px;
+    }
+    .section-title p{
+      margin:0;
+      color: var(--muted);
+      max-width: 72ch;
+      font-weight:600;
+    }
+
+    .grid{
+      display:grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap:14px;
+    }
+    @media (max-width: 980px){ .grid{grid-template-columns: repeat(2, 1fr);} }
+    @media (max-width: 640px){ .grid{grid-template-columns: 1fr;} }
+
+    .card{
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: var(--radius);
+      padding: 16px;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.22);
+      position:relative;
+      overflow:hidden;
+    }
+    .card:hover{border-color: rgba(255,255,255,0.20);}
+    .card h4{margin:0 0 8px; font-size: 16px;}
+    .card p{margin:0; color: var(--muted); line-height:1.55; font-weight:600; font-size:14px;}
+    .tag{
+      display:inline-flex; align-items:center; gap:8px;
+      padding:6px 10px;
+      border-radius:999px;
+      background: rgba(255,255,255,0.06);
+      border:1px solid rgba(255,255,255,0.12);
+      color: rgba(234,240,255,0.85);
+      font-weight:800;
+      font-size: 12px;
+      margin-bottom:10px;
+      width:max-content;
+    }
+    .tag i{
+      width:8px; height:8px; border-radius:99px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      display:inline-block;
+    }
+
+    /* Workflow */
+    .steps{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:14px;
+    }
+    @media (max-width: 820px){ .steps{grid-template-columns: 1fr;} }
+    .step{
+      display:flex; gap:12px;
+      padding:16px;
+      border-radius: var(--radius);
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+    .num{
+      flex: 0 0 auto;
+      width:34px; height:34px;
+      border-radius: 12px;
+      display:flex; align-items:center; justify-content:center;
+      font-weight:900;
+      background: rgba(124,92,255,0.18);
+      border:1px solid rgba(124,92,255,0.35);
+    }
+    .step h4{margin:0 0 6px;}
+    .step p{margin:0; color: var(--muted); font-weight:600; line-height:1.55;}
+
+    /* Footer */
+    footer{
+      padding: 26px 0 34px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-weight:700;
+    }
+    .footer-row{display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;}
+    .small{font-size:13px;}
+
+    /* Modal */
+    .modal-backdrop{
+      position:fixed; inset:0;
+      background: rgba(0,0,0,0.55);
+      display:none;
+      align-items:center; justify-content:center;
+      padding: 20px;
+      z-index: 200;
+    }
+    .modal{
+      width: min(860px, 100%);
+      border-radius: 22px;
+      background: rgba(12,16,34,0.92);
+      border: 1px solid rgba(255,255,255,0.14);
+      box-shadow: 0 30px 120px rgba(0,0,0,0.5);
+      overflow:hidden;
+    }
+    .modal-head{
+      display:flex; justify-content:space-between; align-items:center;
+      padding: 14px 16px;
+      border-bottom: 1px solid rgba(255,255,255,0.12);
+    }
+    .modal-head b{font-size:14px; letter-spacing:0.1px;}
+    .modal-body{padding: 16px;}
+    .close{
+      border:none;
+      background: rgba(255,255,255,0.08);
+      color: var(--text);
+      font-weight:900;
+      border-radius: 12px;
+      padding: 10px 12px;
+      cursor:pointer;
+    }
+    .close:hover{background: rgba(255,255,255,0.11);}
+  </style>
+</head>
+<body>
+  <!-- NAV -->
+  <div class="nav">
+    <div class="container">
+      <div class="nav-inner">
+        <div class="brand">
+          <div class="logo" aria-hidden="true"></div>
+          <div>
+            SQL Data Cleaning Assistant<br/>
+            <span style="color:rgba(234,240,255,0.62); font-weight:800; font-size:12px;">Streamlit • SQL Server • Pandas • LLM</span>
+          </div>
+        </div>
+
+        <div class="nav-links">
+          <a href="#purpose">Purpose</a>
+          <a href="#features">Features</a>
+          <a href="#workflow">Workflow</a>
+          <a href="#stack">Tech</a>
+          <a href="#usecases">Use cases</a>
+        </div>
+
+        <div style="display:flex; gap:10px;">
+          <button class="btn" id="btnDemo">See a demo flow</button>
+          <a class="btn primary" href="#features">Explore features →</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HERO -->
+  <header class="hero">
+    <div class="container">
+      <div class="hero-grid">
+        <div>
+          <div class="kicker"><span class="dot"></span> SQL preprocessing + EDA, made interactive</div>
+          <h1>Clean SQL tables safely, join data visually, and query with natural language.</h1>
+          <p class="sub">
+            This app connects to <b>SQL Server</b>, previews tables + stats, handles <b>nulls</b>, converts data types with
+            guardrails, removes duplicates, supports <b>LLM-powered SELECT queries</b>, and exports cleaned or joined
+            data to <b>CSV</b> or back to the database — all through a polished Streamlit UI.
+          </p>
+
+          <div class="hero-actions">
+            <a class="btn primary" href="#workflow">View workflow</a>
+            <a class="btn" href="#stack">View tech stack</a>
+            <a class="btn" href="#usecases">Who it’s for</a>
+          </div>
+
+          <div class="pill-row">
+            <div class="pill">✅ SELECT-only LLM queries</div>
+            <div class="pill">🧠 Smart null strategies</div>
+            <div class="pill">🛡️ Safe type conversions</div>
+            <div class="pill">🔗 Interactive joins</div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-inner">
+            <h3>Example: Natural language → SQL</h3>
+            <div class="codebox" role="img" aria-label="Natural language to SQL example">
+              <div class="dim">User:</div>
+              Show employees with salary &gt; 50000<br/><br/>
+              <div class="dim">Generated SQL (SELECT-only):</div>
+              SELECT * FROM Employees<br/>
+              WHERE salary &gt; 50000;<br/><br/>
+              <div class="dim">Result:</div>
+              Preview in UI + export
+            </div>
+
+            <div class="statgrid" aria-label="Key stats">
+              <div class="stat"><b>Connect</b><span>SQLAlchemy + cache</span></div>
+              <div class="stat"><b>Clean</b><span>Nulls + types + dups</span></div>
+              <div class="stat"><b>Export</b><span>CSV or SQL table</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- PURPOSE -->
+  <section id="purpose">
+    <div class="container">
+      <div class="section-title">
+        <div>
+          <h2>Project Purpose</h2>
+          <p>Make SQL database management, preprocessing, and exploratory analysis faster and safer.</p>
+        </div>
+      </div>
+
+      <div class="grid">
+        <div class="card">
+          <div class="tag"><i></i> Connect & Preview</div>
+          <h4>Connect to SQL Server quickly</h4>
+          <p>Connect via SQLAlchemy, validate with a test query, cache the connection for performance, and browse tables instantly.</p>
+        </div>
+        <div class="card">
+          <div class="tag"><i></i> Clean & Transform</div>
+          <h4>Preprocess data with guardrails</h4>
+          <p>Handle missing values intelligently, convert column types safely (with warnings), and remove duplicates reliably.</p>
+        </div>
+        <div class="card">
+          <div class="tag"><i></i> Query & Join</div>
+          <h4>Explore without friction</h4>
+          <p>Run natural language queries via LLM (SELECT-only) and join tables interactively with flexible join types and filters.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+  <!-- ✅ VIDEO EMBED (put it here) -->
+<div style="margin:30px auto; max-width:720px;">
+  <div style="position:relative; padding-bottom:56.25%; height:0; overflow:hidden; border-radius:16px; box-shadow:0 14px 40px rgba(0,0,0,0.4);">
+    <iframe
+      src="https://drive.google.com/file/d/1uzQwmwzgwWOTdSS_0ybzlx0QBPHfY6KD/preview"
+      title="SQL Data Cleaning Assistant Demo"
+      style="position:absolute; top:0; left:0; width:100%; height:100%; border:0;"
+      allowfullscreen>
+    </iframe>
+  </div>
+</div>
+
+
+  <!-- FEATURES -->
+  <section id="features">
+    <div class="container">
+      <div class="section-title">
+        <div>
+          <h2>Key Functionalities</h2>
+          <p>Everything you listed — organized like a product page.</p>
+        </div>
+      </div>
+
+      <div class="grid">
+        <div class="card">
+          <div class="tag"><i></i> Database Connection</div>
+          <h4>SQL Server connection + caching</h4>
+          <p>Uses SQLAlchemy, validates with <b>SELECT 1</b>, and caches the connection using <b>st.cache_resource</b> for speed.</p>
+        </div>
+
+        <div class="card">
+          <div class="tag"><i></i> Table Preview & Stats</div>
+          <h4>Preview rows + column analytics</h4>
+          <p>See top rows, total rows/cols, null counts, and column details (dtype, null/non-null counts) in one place.</p>
+        </div>
+
+        <div class="card">
+          <div class="tag"><i></i> Data Type Conversion</div>
+          <h4>Safe dtype changes with warnings</h4>
+          <p>Supports special handling like <b>DATE → INT</b> (YYYYMMDD). Risky conversions require confirmation before applying.</p>
+        </div>
+
+        <div class="card">
+          <div class="tag"><i></i> Null Handling</div>
+          <h4>Smart strategies by data type</h4>
+          <p>Numeric: mean/median/mode/interpolation/ffill/bfill/custom. Datetime: interpolation/ffill/bfill/custom. Text: mode/custom/Unknown/N/A.</p>
+        </div>
+
+        <div class="card">
+          <div class="tag"><i></i> Duplicate Removal</div>
+          <h4>CTE + ROW_NUMBER cleanup</h4>
+          <p>Detects duplicates across all columns and removes them safely using a <b>CTE</b> approach in SQL Server.</p>
+        </div>
+
+        <div class="card">
+          <div class="tag"><i></i> Natural Language SQL</div>
+          <h4>LLM-powered SELECT queries</h4>
+          <p>LangChain + Ollama translates English into SQL, runs it, and shows results interactively. Non-SELECT queries are blocked for safety.</p>
+        </div>
+
+        <div class="card">
+          <div class="tag"><i></i> Interactive Joins</div>
+          <h4>Join tables visually</h4>
+          <p>INNER/LEFT/RIGHT/FULL OUTER joins, selectable join keys, optional WHERE clause, column picker, and preview before export.</p>
+        </div>
+
+        <div class="card">
+          <div class="tag"><i></i> Export</div>
+          <h4>CSV download or save-to-SQL</h4>
+          <p>Export processed/joined data as CSV or write back as a new SQL Server table, with validation for safe names.</p>
+        </div>
+
+        <div class="card">
+          <div class="tag"><i></i> UI Polish</div>
+          <h4>Modern Streamlit styling</h4>
+          <p>Custom gradients, animated headings, styled metrics/tables/alerts, progress feedback, and smooth UX patterns.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+  
+
+
+  <!-- WORKFLOW -->
+  <section id="workflow">
+    <div class="container">
+      <div class="section-title">
+        <div>
+          <h2>Workflow Summary</h2>
+          <p>A simple, guided flow from connection → cleaning → analysis → export.</p>
+        </div>
+      </div>
+
+      <div class="steps">
+        <div class="step">
+          <div class="num">1</div>
+          <div>
+            <h4>Connect to Database</h4>
+            <p>Connect to SQL Server and validate the connection with a test query.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="num">2</div>
+          <div>
+            <h4>Select Table + Preview</h4>
+            <p>Pick a table, view the first 10 rows, and review null counts + column stats.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="num">3</div>
+          <div>
+            <h4>Change Data Types</h4>
+            <p>Convert types safely with guardrails, warnings, and success/skipped/failed feedback.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="num">4</div>
+          <div>
+            <h4>Handle Null Values</h4>
+            <p>Apply per-column strategies (including interpolation) or delete rows with nulls at once.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="num">5</div>
+          <div>
+            <h4>Remove Duplicates</h4>
+            <p>Detect duplicates and remove them using a ROW_NUMBER CTE approach.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="num">6</div>
+          <div>
+            <h4>Query + Join + Export</h4>
+            <p>Run SELECT queries via natural language, join tables interactively, export to CSV or save as a new SQL table.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TECH STACK -->
+  <section id="stack">
+    <div class="container">
+      <div class="section-title">
+        <div>
+          <h2>Technologies Used</h2>
+          <p>Built with Python and a reliable stack for database work, data science, and LLM integration.</p>
+        </div>
+      </div>
+
+      <div class="grid">
+        <div class="card">
+          <div class="tag"><i></i> Core</div>
+          <h4>Python + Pandas</h4>
+          <p>Core logic, preprocessing, statistics, and interpolation methods.</p>
+        </div>
+        <div class="card">
+          <div class="tag"><i></i> UI</div>
+          <h4>Streamlit + CSS</h4>
+          <p>Interactive UI, custom styling, spinners, progress, and metrics for polished UX.</p>
+        </div>
+        <div class="card">
+          <div class="tag"><i></i> Database</div>
+          <h4>SQLAlchemy</h4>
+          <p>Connection management and execution of SQL statements safely and efficiently.</p>
+        </div>
+        <div class="card">
+          <div class="tag"><i></i> LLM</div>
+          <h4>LangChain + Ollama</h4>
+          <p>Translate natural language instructions into SQL queries with a SELECT-only safety policy.</p>
+        </div>
+        <div class="card">
+          <div class="tag"><i></i> Reliability</div>
+          <h4>Logging</h4>
+          <p>Captures errors and successful operations for easier debugging and trust.</p>
+        </div>
+        <div class="card">
+          <div class="tag"><i></i> Export</div>
+          <h4>CSV + SQL Table Output</h4>
+          <p>Download results or write joined/processed data back into SQL Server as new tables.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ADVANCED / USE CASES -->
+  <section id="usecases">
+    <div class="container">
+      <div class="section-title">
+        <div>
+          <h2>Advanced Features & Use Cases</h2>
+          <p>Designed for real workflows in data engineering, analytics, and regulated domains.</p>
+        </div>
+      </div>
+
+      <div class="grid">
+        <div class="card">
+          <div class="tag"><i></i> Advanced</div>
+          <h4>Interpolation options</h4>
+          <p>Supports multiple interpolation methods (linear, polynomial, spline, nearest) for numeric/datetime missing values.</p>
+        </div>
+        <div class="card">
+          <div class="tag"><i></i> Safety</div>
+          <h4>Risk confirmations</h4>
+          <p>Checks and confirmations before risky transformations (e.g., non-numeric → numeric) to reduce data corruption risk.</p>
+        </div>
+        <div class="card">
+          <div class="tag"><i></i> Engineers</div>
+          <h4>Data Engineers</h4>
+          <p>Quickly clean raw SQL tables, standardize types, deduplicate, and export curated datasets.</p>
+        </div>
+        <div class="card">
+          <div class="tag"><i></i> Analysts</div>
+          <h4>Data Analysts</h4>
+          <p>Preview datasets, explore stats, join tables, and query with natural language when you don’t want to hand-write SQL.</p>
+        </div>
+        <div class="card">
+          <div class="tag"><i></i> Business Users</div>
+          <h4>Business Users</h4>
+          <p>Explore tables and get answers with guided UI + SELECT-only queries without learning complex SQL syntax.</p>
+        </div>
+        <div class="card">
+          <div class="tag"><i></i> Regulated</div>
+          <h4>Healthcare / Finance</h4>
+          <p>Safety-first cleaning workflow with validation, logging, and guardrails to minimize unintended database changes.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="container">
+      <div class="footer-row">
+        <div class="small">© <span id="year"></span> SQL Data Cleaning Assistant</div>
+        <div class="small">Built with Streamlit • SQLAlchemy • Pandas • LangChain • Ollama</div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- MODAL -->
+  <div class="modal-backdrop" id="modalBackdrop" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-label="Demo flow">
+      <div class="modal-head">
+        <b>Demo flow (high level)</b>
+        <button class="close" id="btnClose">Close</button>
+      </div>
+      <div class="modal-body">
+        <div class="codebox">
+          1) Connect → validate (SELECT 1) → cache connection<br/>
+          2) Select table → preview rows → stats + null scan<br/>
+          3) Convert dtypes (with warnings) → apply ALTER/UPDATE<br/>
+          4) Handle nulls (smart strategies) → update table<br/>
+          5) Deduplicate (CTE + ROW_NUMBER) → report removed rows<br/>
+          6) Natural language → SELECT SQL → execute + display results<br/>
+          7) Join tables (type/keys/filters/cols) → preview → export CSV or save new SQL table
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // footer year
+    document.getElementById("year").textContent = new Date().getFullYear();
+
+    // modal
+    const modalBackdrop = document.getElementById("modalBackdrop");
+    const btnDemo = document.getElementById("btnDemo");
+    const btnClose = document.getElementById("btnClose");
+
+    const openModal = () => {
+      modalBackdrop.style.display = "flex";
+      modalBackdrop.setAttribute("aria-hidden", "false");
+    };
+    const closeModal = () => {
+      modalBackdrop.style.display = "none";
+      modalBackdrop.setAttribute("aria-hidden", "true");
+    };
+
+    btnDemo.addEventListener("click", openModal);
+    btnClose.addEventListener("click", closeModal);
+    modalBackdrop.addEventListener("click", (e) => {
+      if (e.target === modalBackdrop) closeModal();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") closeModal();
+    });
+  </script>
+</body>
+</html>
